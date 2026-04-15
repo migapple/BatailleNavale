@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Bataille Navale</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --ink: #0a1628;
+    --cell: 30px;
+    --gap: 2px;
+    --accent: #1D9E75;
+    --accent-dark: #0F6E56;
+    --hit: #E24B4A;
+    --miss: #4a5a6a;
+    --sunk: #993C1D;
+    --text: #e8f0f8;
+    --text2: #8aa0b8;
+    --border: rgba(255,255,255,0.12);
+    --card: rgba(255,255,255,0.06);
+    --gold: #c9a84c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width:100%; height:100%; background: var(--ink); overscroll-behavior: none; }
+
+  #app {
+    position: fixed; top:0; left:0; right:0; bottom:0;
+    display: flex; flex-direction: column;
+    padding-top: var(--safe-top);
+    background: var(--ink);
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  #header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px 8px;
+    border-bottom: 0.5px solid var(--border);
+    flex-shrink: 0;
+  }
+  #header h1 { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: 0.5px; }
+  .header-right { display: flex; gap: 6px; align-items: center; }
+  .lang-btn {
+    background: transparent; border: 0.5px solid var(--border);
+    border-radius: 8px; padding: 4px 10px; font-size: 12px;
+    cursor: pointer; color: var(--text2);
+  }
+  .lang-btn.active { background: rgba(255,255,255,0.12); color: var(--text); }
+  #btn-apps {
+    background: rgba(201,168,76,0.15); border: 0.5px solid rgba(201,168,76,0.35);
+    border-radius: 8px; padding: 4px 10px; font-size: 12px;
+    cursor: pointer; color: var(--gold);
+  }
+  #btn-apps:active { background: rgba(201,168,76,0.28); }
+
+  /* ── SCORES ── */
+  #scores { display: flex; gap: 8px; padding: 8px 16px; flex-shrink: 0; }
+  .score-card {
+    flex: 1; background: var(--card); border: 0.5px solid var(--border);
+    border-radius: 10px; padding: 6px 10px; text-align: center;
+  }
+  .score-card .val { font-size: 20px; font-weight: 600; color: var(--text); }
+  .score-card .lbl { font-size: 10px; color: var(--text2); margin-top: 1px; }
+
+  /* ── SCROLL ── */
+  #scroll {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 16px 16px;
+    display: flex; flex-direction: column; gap: 16px;
+    align-items: center;
+  }
+
+  /* ── BOARDS ── */
+  .board-section { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .board-label { font-size: 12px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; }
+  .grid { display: grid; grid-template-columns: repeat(10, var(--cell)); gap: var(--gap); }
+  .cell {
+    width: var(--cell); height: var(--cell);
+    border: 0.5px solid rgba(255,255,255,0.08);
+    border-radius: 3px; background: #112233;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; cursor: pointer; transition: background 0.1s;
+  }
+  .cell.ship  { background: var(--accent); }
+  .cell.hit   { background: var(--hit); cursor: default; }
+  .cell.hit::after   { content:'✕'; font-size:12px; color:white; font-weight:600; }
+  .cell.miss  { background: var(--miss); cursor: default; }
+  .cell.miss::after  { content:'·'; font-size:18px; color:rgba(255,255,255,0.4); }
+  .cell.sunk  { background: var(--sunk); cursor: default; }
+  .cell.sunk::after  { content:'✕'; font-size:12px; color:white; font-weight:600; }
+  .cell.enemy { background: #0d2137; }
+  .cell.enemy:active { background: #1a3a55; }
+  .cell.dead  { cursor: default; }
+  .cell.placing-hover   { background: var(--accent); opacity: 0.75; }
+  .cell.placing-invalid { background: var(--hit); opacity: 0.6; }
+
+  /* ── DOCK ── */
+  #dock-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+  .orient-row { display: flex; align-items: center; gap: 8px; }
+  .orient-lbl { font-size: 11px; color: var(--text2); }
+  .orient-btn {
+    font-size: 12px; padding: 4px 12px;
+    background: transparent; border: 0.5px solid var(--border);
+    border-radius: 8px; cursor: pointer; color: var(--text2);
+  }
+  .orient-btn.active { background: rgba(255,255,255,0.12); color: var(--text); }
+  .ships-dock { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .ship-piece {
+    display: flex; align-items: center; gap: 2px; cursor: pointer;
+    padding: 5px 8px; border-radius: 8px;
+    border: 0.5px solid var(--border); background: var(--card);
+  }
+  .ship-piece.selected-ship { border-color: var(--accent); background: rgba(29,158,117,0.2); }
+  .ship-piece.placed { opacity: 0.3; pointer-events: none; }
+  .ship-piece .sname { font-size: 10px; color: var(--text2); margin-right: 4px; }
+  .ship-cell { width: 12px; height: 12px; background: var(--accent); border-radius: 2px; }
+
+  /* ── CONTROLS ── */
+  #controls {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    padding: 8px 16px; flex-shrink: 0;
+    border-top: 0.5px solid var(--border);
+  }
+  .btn {
+    background: var(--card); border: 0.5px solid var(--border);
+    border-radius: 10px; padding: 8px 18px;
+    font-size: 14px; cursor: pointer; color: var(--text);
+  }
+  .btn:active { opacity: 0.7; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); font-weight: 500; }
+  .btn.primary:active { background: var(--accent-dark); }
+  .btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* ── STATUS ── */
+  #status-bar {
+    text-align: center; font-size: 13px; color: var(--text2);
+    padding: 6px 16px; min-height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  #status-bar.win  { color: #5DCAA5; font-weight: 600; font-size: 14px; }
+  #status-bar.lose { color: #E24B4A; font-weight: 600; font-size: 14px; }
+
+  #safe-bottom { height: var(--safe-bottom); flex-shrink: 0; }
+
+  @media (max-width: 360px) { :root { --cell: 27px; } }
+  @media (max-width: 320px) { :root { --cell: 24px; } }
+
+  /* ════════════════════════════════════
+     MODALE NOS AUTRES APPS
+  ════════════════════════════════════ */
+  #modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 100;
+    align-items: flex-end;
+  }
+  #modal-overlay.open { display: flex; }
+
+  #modal {
+    width: 100%;
+    max-height: 80vh;
+    background: #0f1e30;
+    border-radius: 18px 18px 0 0;
+    border-top: 0.5px solid rgba(201,168,76,0.35);
+    display: flex; flex-direction: column;
+    padding-bottom: var(--safe-bottom);
+    animation: slideUp 0.26s cubic-bezier(0.25,0.8,0.25,1);
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .modal-handle {
+    width: 36px; height: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.2);
+    margin: 10px auto 0; flex-shrink: 0;
+  }
+
+  #modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px 8px;
+    border-bottom: 0.5px solid rgba(201,168,76,0.2);
+    flex-shrink: 0;
+  }
+  #modal-header h2 { font-size: 16px; font-weight: 600; color: var(--gold); }
+  #modal-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(255,255,255,0.08); border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 14px; color: var(--text2);
+  }
+  #modal-close:active { background: rgba(255,255,255,0.15); }
+
+  #modal-search-wrap { padding: 10px 16px 4px; flex-shrink: 0; }
+  #modal-search {
+    width: 100%; padding: 7px 12px;
+    background: rgba(255,255,255,0.07); border: 0.5px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 13px; outline: none;
+  }
+  #modal-search::placeholder { color: var(--text2); }
+
+  #modal-list {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 14px 10px;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+
+  .m-card {
+    display: flex; align-items: center; gap: 11px;
+    background: rgba(255,255,255,0.05);
+    border: 0.5px solid rgba(255,255,255,0.09);
+    border-radius: 11px; padding: 9px 12px;
+    cursor: pointer;
+  }
+  .m-card:active { background: rgba(255,255,255,0.10); }
+
+  .m-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+
+  .m-info { flex: 1; min-width: 0; }
+  .m-name { font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-desc { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+  .m-badge {
+    font-size: 10px; color: var(--gold);
+    border: 0.5px solid rgba(201,168,76,0.3);
+    border-radius: 6px; padding: 2px 7px; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <h1 id="t-title">Bataille Navale</h1>
+    <div class="header-right">
+      <button id="btn-lang" class="lang-btn active" onclick="toggleLang()">🇫🇷 FR</button>
+      <button id="btn-apps" onclick="openModal()">🚀 <span id="t-apps">Nos apps</span></button>
+    </div>
+  </div>
+
+  <!-- SCORES -->
+  <div id="scores">
+    <div class="score-card">
+      <div class="val" id="hits-p">0</div>
+      <div class="lbl" id="t-hits-p">Touché</div>
+    </div>
+    <div class="score-card">
+      <div class="val" id="hits-e">0</div>
+      <div class="lbl" id="t-hits-e">Ennemi touché</div>
+    </div>
+    <div class="score-card">
+      <div class="val" id="phase-lbl" style="font-size:12px;padding-top:4px;">–</div>
+      <div class="lbl" id="t-phase">Phase</div>
+    </div>
+  </div>
+
+  <!-- SCROLL -->
+  <div id="scroll">
+    <div class="board-section">
+      <div class="board-label" id="t-my-fleet">Ma flotte</div>
+      <div class="grid" id="player-grid"></div>
+      <div id="dock-wrap">
+        <div class="orient-row">
+          <span class="orient-lbl" id="t-orient">Orientation :</span>
+          <button class="orient-btn active" id="btn-h" onclick="setOrient('h')">—</button>
+          <button class="orient-btn" id="btn-v" onclick="setOrient('v')">|</button>
+        </div>
+        <div class="ships-dock" id="ships-dock"></div>
+      </div>
+    </div>
+    <div class="board-section">
+      <div class="board-label" id="t-enemy-fleet">Flotte ennemie</div>
+      <div class="grid" id="enemy-grid"></div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div id="controls">
+    <button class="btn" onclick="randomPlacement()">🎲 <span id="t-random">Aléatoire</span></button>
+    <button class="btn primary" id="btn-start" onclick="startGame()" disabled>▶ <span id="t-start">Démarrer</span></button>
+    <button class="btn" onclick="restartGame()">↺ <span id="t-restart">Recommencer</span></button>
+  </div>
+
+  <div id="status-bar"></div>
+  <div id="safe-bottom"></div>
+</div>
+
+<!-- ══ MODALE NOS AUTRES APPS ══ -->
+<div id="modal-overlay" onclick="handleOverlay(event)">
+  <div id="modal">
+    <div class="modal-handle"></div>
+    <div id="modal-header">
+      <h2 id="t-modal-title">Nos autres applications</h2>
+      <button id="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-search-wrap">
+      <input id="modal-search" type="search" placeholder="Rechercher…" oninput="buildModal(this.value)">
+    </div>
+    <div id="modal-list"></div>
+  </div>
+</div>
+
+<script>
+/* ══ CONFIG ══ */
+const MGA_CONFIG = { appCourante: 'bataillenavale' };
+
+const MGA_APPS = [
+  { id:'institutdefrance',   name:'Institut de France',        desc:'Les 5 académies françaises',            icon:'🏛️', bg:'#1a2a4a', url:'https://apps.apple.com/us/app/institut-de-france/id6761769529' },
+  { id:'presidentsfrancais', name:'Présidents Français',       desc:'Les présidents de la République',       icon:'🇫🇷', bg:'#1a1a2e', url:'https://apps.apple.com/us/app/pr%C3%A9sidents-fran%C3%A7ais/id6761324444' },
+  { id:'saintdenis',         name:'Basilique de Saint-Denis',  desc:'Rois de France & nécropole royale',     icon:'⚜️', bg:'#2a1a0a', url:'https://apps.apple.com/us/app/basilique-de-saint-denis/id6761709149' },
+  { id:'roisdefrance',       name:'Rois de France',            desc:'44 souverains par dynastie',            icon:'👑', bg:'#2a1a00', url:'https://apps.apple.com/us/app/rois-de-france/id6761322546' },
+  { id:'marechauxnapoleon',  name:'Maréchaux Napoléon',        desc:"Les 26 maréchaux d'Empire",             icon:'⚔️', bg:'#1a1000', url:'https://apps.apple.com/us/app/mar%C3%A9chaux-napol%C3%A9on/id6761374601' },
+  { id:'pantheonparis',      name:'Panthéon Paris',            desc:'Les grands personnages inhumés',        icon:'🕌', bg:'#1a2a1a', url:'https://apps.apple.com/us/app/pantheon-paris/id6761335268' },
+  { id:'academiefrancaise',  name:'Académie française',        desc:'Les 40 Immortels',                      icon:'📜', bg:'#1a1a2a', url:'https://apps.apple.com/us/app/academie-francaise/id6761334922' },
+  { id:'senatparis',         name:'Sénat Paris',               desc:'Présidents du Sénat français',          icon:'🏛️', bg:'#0a1a2a', url:'https://apps.apple.com/us/app/s%C3%A9nat-paris/id6761363063' },
+  { id:'assembleeparis',     name:'Assemblée Paris',           desc:"Présidents de l'Assemblée nationale",   icon:'🗳️', bg:'#0a1820', url:'https://apps.apple.com/us/app/assembl%C3%A9e-paris/id6761361079' },
+  { id:'museesparis',        name:'Musées Paris',              desc:'37 musées parisiens',                   icon:'🖼️', bg:'#1a0a2a', url:'https://apps.apple.com/us/app/musees-paris/id6760890465' },
+  { id:'theatresparis',      name:'Théâtres Paris',            desc:'Les théâtres de Paris',                 icon:'🎭', bg:'#2a0a1a', url:'https://apps.apple.com/us/app/theatres-paris/id6760929391' },
+  { id:'scenesparis',        name:'Scènes Paris',              desc:'Salles de spectacle parisiennes',       icon:'🎬', bg:'#1a0a20', url:'https://apps.apple.com/us/app/sc%C3%A8nes-paris/id6761293938' },
+  { id:'cimetieres',         name:'Cimetières Paris',          desc:'Père-Lachaise & Montparnasse',          icon:'🌿', bg:'#0a1a0a', url:'https://apps.apple.com/us/app/cimetieres-paris/id6760751055' },
+  { id:'arbresdeFrance',     name:'Arbres de France',          desc:'Les arbres remarquables français',      icon:'🌳', bg:'#0a1a08', url:'https://apps.apple.com/us/app/arbres-de-france/id6761685637' },
+  { id:'capitalesdeurope',   name:"Capitales d'Europe",        desc:'40 capitales européennes',              icon:'🌍', bg:'#0a1228', url:'https://apps.apple.com/us/app/capitales-europe/id6761685637' },
+  { id:'compositeurs',       name:'Compositeurs',              desc:'Grands compositeurs classiques',        icon:'🎼', bg:'#1a0a2a', url:'https://apps.apple.com/us/app/compositeurs/id6761656628' },
+  { id:'belotecalc',         name:'Belote Calc',               desc:'Calculateur de score belote',           icon:'🃏', bg:'#1a0808', url:'https://apps.apple.com/us/app/belote-calc/id1483084001' },
+  { id:'tarotscalc',         name:'Tarots Calc',               desc:'Calculateur de score tarot',            icon:'🀄', bg:'#1a1008', url:'https://apps.apple.com/us/app/tarots-calc/id1481989301' },
+  { id:'frigomanager',       name:'Frigo Manager',             desc:'Gestion & anti-gaspillage alimentaire', icon:'🧊', bg:'#081828', url:'https://apps.apple.com/us/app/frigo-manager/id6759219383' },
+  { id:'cavemanager',        name:'Cave Manager',              desc:'Gestion de cave à vin',                 icon:'🍷', bg:'#280810', url:'https://apps.apple.com/us/app/cave-manager/id6760126279' },
+  { id:'medisafe',           name:'Médisafe-Pharmacie',        desc:'Gestion de pharmacie & médicaments',   icon:'💊', bg:'#0a1a18', url:'https://apps.apple.com/us/app/medisafe-pharmacie/id6761271324' },
+  { id:'mesrestaurants',     name:'Mes Restaurants',           desc:'Carnet de restaurants favoris',         icon:'🍽️', bg:'#1a0e08', url:'https://apps.apple.com/us/app/mesrestaurants/id6760617965' },
+  { id:'toioumoi',           name:'Toi ou Moi',                desc:'Partage de dépenses à deux',            icon:'💶', bg:'#0a180a', url:'https://apps.apple.com/us/app/toi-ou-moi/id1475884625' },
+].filter(a => a.id !== MGA_CONFIG.appCourante);
+
+/* ══ MODALE ══ */
+function openModal(){
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-search').value='';
+  buildModal('');
+}
+function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); }
+function handleOverlay(e){ if(e.target===document.getElementById('modal-overlay')) closeModal(); }
+
+function buildModal(q){
+  const list=document.getElementById('modal-list');
+  list.innerHTML='';
+  const f=(q||'').toLowerCase().trim();
+  const items=f ? MGA_APPS.filter(a=>a.name.toLowerCase().includes(f)||a.desc.toLowerCase().includes(f)) : MGA_APPS;
+  items.forEach(app=>{
+    const card=document.createElement('div');
+    card.className='m-card';
+    card.onclick=()=>window.open(app.url,'_blank');
+
+    const icon=document.createElement('div');
+    icon.className='m-icon';
+    icon.style.background=app.bg;
+    icon.textContent=app.icon;
+
+    const info=document.createElement('div');
+    info.className='m-info';
+    info.innerHTML=`<div class="m-name">${app.name}</div><div class="m-desc">${app.desc}</div>`;
+
+    const badge=document.createElement('div');
+    badge.className='m-badge';
+    badge.textContent='▸ Store';
+
+    card.appendChild(icon); card.appendChild(info); card.appendChild(badge);
+    list.appendChild(card);
+  });
+}
+
+/* ══ GAME ══ */
+const TEXTS={
+  fr:{
+    title:'Bataille Navale', apps:'Nos apps', modalTitle:'Nos autres applications',
+    myFleet:'Ma flotte', enemyFleet:'Flotte ennemie',
+    phase:'Phase', placement:'Placement', play:'Jeu', over:'Terminé',
+    hitsP:'Touché', hitsE:'Ennemi touché',
+    random:'Aléatoire', start:'Démarrer', restart:'Recommencer', orient:'Orientation :',
+    placeShips:'Placez vos navires ou cliquez Aléatoire',
+    yourTurn:'À vous ! Tirez sur la grille ennemie.', aiTurn:"L'IA tire…",
+    hit:'💥 Touché !', miss:'🌊 Manqué !', sunk:'🔥 Coulé !',
+    win:'🎉 Victoire ! Vous avez coulé toute la flotte ennemie !',
+    lose:"💀 Défaite… L'IA a coulé toute votre flotte.",
+    ships:{name5:'Porte-avions',name4:'Cuirassé',name3a:'Croiseur',name3b:'Sous-marin',name2:'Torpilleur'}
+  },
+  en:{
+    title:'Battleship', apps:'Our apps', modalTitle:'Our other applications',
+    myFleet:'My fleet', enemyFleet:'Enemy fleet',
+    phase:'Phase', placement:'Placement', play:'Game', over:'Game over',
+    hitsP:'Hits', hitsE:'Enemy hits',
+    random:'Random', start:'Start', restart:'Restart', orient:'Orientation:',
+    placeShips:'Place your ships or click Random',
+    yourTurn:'Your turn! Fire on the enemy grid.', aiTurn:'AI is firing…',
+    hit:'💥 Hit!', miss:'🌊 Miss!', sunk:'🔥 Sunk!',
+    win:'🎉 Victory! You sank the entire enemy fleet!',
+    lose:'💀 Defeat… The AI sank your entire fleet.',
+    ships:{name5:'Carrier',name4:'Battleship',name3a:'Cruiser',name3b:'Submarine',name2:'Destroyer'}
+  }
+};
+
+let lang='fr';
+const SHIP_DEFS=()=>[
+  {id:0,size:5,key:'name5'},{id:1,size:4,key:'name4'},
+  {id:2,size:3,key:'name3a'},{id:3,size:3,key:'name3b'},{id:4,size:2,key:'name2'}
+];
+let playerGrid=[],enemyGrid=[],placedShips=[],enemyShips=[];
+let selectedShip=null,orient='h',gamePhase='placement',playerTurn=true;
+let hitsP=0,hitsE=0,aiHits=[],aiMode='hunt',aiDir=null;
+
+function T(k){return TEXTS[lang][k];}
+
+function toggleLang(){
+  lang=lang==='fr'?'en':'fr';
+  document.getElementById('btn-lang').textContent=lang==='fr'?'🇫🇷 FR':'🇬🇧 EN';
+  applyTexts(); renderDock(); updateStatus();
+}
+
+function applyTexts(){
+  const t=TEXTS[lang];
+  $('t-title').textContent=t.title;
+  $('t-apps').textContent=t.apps;
+  $('t-modal-title').textContent=t.modalTitle;
+  $('t-my-fleet').textContent=t.myFleet;
+  $('t-enemy-fleet').textContent=t.enemyFleet;
+  $('t-hits-p').textContent=t.hitsP;
+  $('t-hits-e').textContent=t.hitsE;
+  $('t-phase').textContent=t.phase;
+  $('t-random').textContent=t.random;
+  $('t-start').textContent=t.start;
+  $('t-restart').textContent=t.restart;
+  $('t-orient').textContent=t.orient;
+  $('modal-search').placeholder=lang==='fr'?'Rechercher…':'Search…';
+  const pm={placement:t.placement,play:t.play,over:t.over};
+  $('phase-lbl').textContent=pm[gamePhase]||'–';
+}
+
+function $(id){return document.getElementById(id);}
+function updateStatus(){
+  if(gamePhase==='placement') setStatus(T('placeShips'));
+  else if(gamePhase==='play') setStatus(playerTurn?T('yourTurn'):T('aiTurn'));
+}
+function setStatus(msg,cls=''){
+  $('status-bar').className='status-bar'+(cls?' '+cls:'');
+  $('status-bar').textContent=msg;
+}
+
+function initGrids(){
+  playerGrid=Array.from({length:10},()=>Array(10).fill(0));
+  enemyGrid=Array.from({length:10},()=>Array(10).fill(0));
+  placedShips=[]; enemyShips=[]; selectedShip=null; orient='h';
+  hitsP=0; hitsE=0; aiHits=[]; aiMode='hunt'; aiDir=null;
+  gamePhase='placement'; playerTurn=true;
+  $('hits-p').textContent='0'; $('hits-e').textContent='0';
+}
+
+function renderGrid(id,data,isEnemy){
+  const el=$(id); el.innerHTML='';
+  for(let r=0;r<10;r++) for(let c=0;c<10;c++){
+    const cell=document.createElement('div');
+    cell.className='cell';
+    const v=data[r][c];
+    if(isEnemy){
+      if(v===2) cell.classList.add('miss','dead');
+      else if(v===3) cell.classList.add('hit','dead');
+      else if(v===4) cell.classList.add('sunk','dead');
+      else{ cell.classList.add('enemy'); cell.onclick=()=>playerFire(r,c); }
+    } else {
+      if(v===1) cell.classList.add('ship');
+      else if(v===2) cell.classList.add('miss');
+      else if(v===3) cell.classList.add('hit');
+      else if(v===4) cell.classList.add('sunk');
+      if(gamePhase==='placement'){
+        cell.addEventListener('touchstart',e=>{e.preventDefault();hoverPlace(r,c);placeShip(r,c);},{passive:false});
+        cell.onmouseenter=()=>hoverPlace(r,c);
+        cell.onmouseleave=()=>clearHover();
+        cell.onclick=()=>placeShip(r,c);
+      }
+    }
+    el.appendChild(cell);
+  }
+}
+
+function gc(id,r,c){return $(id).children[r*10+c];}
+function getShipCells(r,c,size,o){
+  const cells=[];
+  for(let i=0;i<size;i++){
+    const nr=o==='v'?r+i:r,nc=o==='h'?c+i:c;
+    if(nr<0||nr>=10||nc<0||nc>=10) return null;
+    cells.push([nr,nc]);
+  }
+  return cells;
+}
+function canPlace(grid,r,c,size,o){
+  const cells=getShipCells(r,c,size,o);
+  if(!cells) return false;
+  for(const[rr,cc]of cells){
+    if(grid[rr][cc]!==0) return false;
+  }
+  return true;
+}
+function hoverPlace(r,c){
+  if(!selectedShip) return;
+  clearHover();
+  const cells=getShipCells(r,c,selectedShip.size,orient);
+  const valid=canPlace(playerGrid,r,c,selectedShip.size,orient);
+  if(cells) cells.forEach(([rr,cc])=>{const el=gc('player-grid',rr,cc);if(el)el.classList.add(valid?'placing-hover':'placing-invalid');});
+}
+function clearHover(){
+  document.querySelectorAll('#player-grid .placing-hover,#player-grid .placing-invalid')
+    .forEach(el=>el.classList.remove('placing-hover','placing-invalid'));
+}
+function placeShip(r,c){
+  if(gamePhase!=='placement'||!selectedShip) return;
+  if(!canPlace(playerGrid,r,c,selectedShip.size,orient)) return;
+  const cells=getShipCells(r,c,selectedShip.size,orient);
+  cells.forEach(([rr,cc])=>playerGrid[rr][cc]=1);
+  placedShips.push({...selectedShip,r,c,o:orient,cells,hits:0});
+  selectedShip=null;
+  $('btn-start').disabled=!SHIP_DEFS().every(s=>placedShips.some(p=>p.id===s.id));
+  renderGrid('player-grid',playerGrid,false); renderDock();
+}
+function renderDock(){
+  const dock=$('ships-dock'); dock.innerHTML='';
+  if(gamePhase!=='placement'){$('dock-wrap').style.display='none';return;}
+  $('dock-wrap').style.display='flex';
+  SHIP_DEFS().forEach(s=>{
+    const isP=placedShips.some(p=>p.id===s.id),isS=selectedShip&&selectedShip.id===s.id;
+    const div=document.createElement('div');
+    div.className='ship-piece'+(isP?' placed':'')+(isS?' selected-ship':'');
+    const nm=document.createElement('span'); nm.className='sname'; nm.textContent=TEXTS[lang].ships[s.key];
+    div.appendChild(nm);
+    for(let i=0;i<s.size;i++){const sc=document.createElement('div');sc.className='ship-cell';div.appendChild(sc);}
+    div.onclick=()=>{if(!isP){selectedShip=s;renderDock();}};
+    dock.appendChild(div);
+  });
+}
+function setOrient(o){
+  orient=o;
+  $('btn-h').classList.toggle('active',o==='h');
+  $('btn-v').classList.toggle('active',o==='v');
+}
+function randomPlacement(){
+  initGrids();
+  SHIP_DEFS().forEach(s=>{
+    let ok=false;
+    while(!ok){
+      const o=Math.random()<0.5?'h':'v',r=Math.floor(Math.random()*10),c=Math.floor(Math.random()*10);
+      if(canPlace(playerGrid,r,c,s.size,o)){
+        const cells=getShipCells(r,c,s.size,o);
+        cells.forEach(([rr,cc])=>playerGrid[rr][cc]=1);
+        placedShips.push({...s,r,c,o,cells,hits:0}); ok=true;
+      }
+    }
+  });
+  $('btn-start').disabled=false;
+  renderGrid('player-grid',playerGrid,false); renderGrid('enemy-grid',enemyGrid,true);
+  renderDock(); applyTexts(); setStatus(T('placeShips'));
+}
+function placeEnemyShips(){
+  SHIP_DEFS().forEach(s=>{
+    let ok=false;
+    while(!ok){
+      const o=Math.random()<0.5?'h':'v',r=Math.floor(Math.random()*10),c=Math.floor(Math.random()*10);
+      if(canPlace(enemyGrid,r,c,s.size,o)){
+        const cells=getShipCells(r,c,s.size,o);
+        cells.forEach(([rr,cc])=>enemyGrid[rr][cc]=1);
+        enemyShips.push({...s,r,c,o,cells,hits:0}); ok=true;
+      }
+    }
+  });
+}
+function startGame(){
+  gamePhase='play'; placeEnemyShips();
+  renderGrid('player-grid',playerGrid,false); renderGrid('enemy-grid',enemyGrid,true);
+  renderDock(); applyTexts(); setStatus(T('yourTurn'));
+  $('btn-start').disabled=true;
+}
+function playerFire(r,c){
+  if(gamePhase!=='play'||!playerTurn) return;
+  if([2,3,4].includes(enemyGrid[r][c])) return;
+  const wasShip=enemyGrid[r][c]===1;
+  enemyGrid[r][c]=wasShip?3:2;
+  if(wasShip){
+    hitsP++; $('hits-p').textContent=hitsP;
+    const ship=enemyShips.find(s=>s.cells.some(([rr,cc])=>rr===r&&cc===c));
+    if(ship){ ship.hits++; if(ship.hits===ship.size){ship.cells.forEach(([rr,cc])=>enemyGrid[rr][cc]=4);setStatus(T('sunk'));}else setStatus(T('hit')); }
+    if(enemyShips.every(s=>s.hits===s.size)){renderGrid('enemy-grid',enemyGrid,true);endGame(true);return;}
+  } else { setStatus(T('miss')); playerTurn=false; setTimeout(aiTurn,900); }
+  renderGrid('enemy-grid',enemyGrid,true);
+}
+function aiTurn(){
+  if(gamePhase!=='play') return;
+  let r,c;
+  if(aiMode==='hunt'){
+    let t=0;
+    do{r=Math.floor(Math.random()*10);c=Math.floor(Math.random()*10);t++;}
+    while([2,3,4].includes(playerGrid[r][c])&&t<300);
+  } else {
+    const dirs=[[0,1],[0,-1],[1,0],[-1,0]]; let found=false;
+    if(aiDir){
+      const[dr,dc]=aiDir,last=aiHits[aiHits.length-1];
+      const nr=last[0]+dr,nc=last[1]+dc;
+      if(nr>=0&&nr<10&&nc>=0&&nc<10&&![2,3,4].includes(playerGrid[nr][nc])){r=nr;c=nc;found=true;}
+      else aiDir=null;
+    }
+    if(!found){
+      const target=aiHits[aiHits.length-1];
+      for(const[dr,dc]of dirs.sort(()=>Math.random()-0.5)){
+        const nr=target[0]+dr,nc=target[1]+dc;
+        if(nr>=0&&nr<10&&nc>=0&&nc<10&&![2,3,4].includes(playerGrid[nr][nc])){r=nr;c=nc;found=true;break;}
+      }
+    }
+    if(!found){aiMode='hunt';aiHits=[];aiDir=null;aiTurn();return;}
+  }
+  const wasShip=playerGrid[r][c]===1;
+  playerGrid[r][c]=wasShip?3:2;
+  if(wasShip){
+    hitsE++; $('hits-e').textContent=hitsE;
+    if(aiMode==='hunt'){aiMode='target';aiHits=[[r,c]];aiDir=null;}
+    else{aiHits.push([r,c]);if(aiHits.length===2)aiDir=[r-aiHits[0][0],c-aiHits[0][1]];}
+    const ship=placedShips.find(s=>s.cells.some(([rr,cc])=>rr===r&&cc===c));
+    if(ship){ship.hits++;if(ship.hits===ship.size){ship.cells.forEach(([rr,cc])=>playerGrid[rr][cc]=4);aiMode='hunt';aiHits=[];aiDir=null;}}
+    if(placedShips.every(s=>s.hits===s.size)){renderGrid('player-grid',playerGrid,false);endGame(false);return;}
+  }
+  renderGrid('player-grid',playerGrid,false);
+  playerTurn=true; setTimeout(()=>setStatus(T('yourTurn')),500);
+}
+function endGame(win){
+  gamePhase='over'; applyTexts();
+  setStatus(T(win?'win':'lose'),win?'win':'lose');
+  $('btn-start').disabled=true;
+}
+function restartGame(){
+  initGrids();
+  renderGrid('player-grid',playerGrid,false); renderGrid('enemy-grid',enemyGrid,true);
+  renderDock(); applyTexts(); setStatus(T('placeShips'));
+  $('btn-start').disabled=true; setOrient('h');
+}
+
+/* ══ INIT ══ */
+initGrids();
+renderGrid('player-grid',playerGrid,false);
+renderGrid('enemy-grid',enemyGrid,true);
+renderDock(); applyTexts(); setStatus(T('placeShips'));
+</script>
+</body>
+</html>

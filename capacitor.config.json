@@ -1,0 +1,20 @@
+{
+  "appId": "com.michel.garlandat.bataillenavale",
+  "appName": "Bataille navale",
+  "webDir": "App/public",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#0a1628",
+  "ios": {
+    "backgroundColor": "#0a1628",
+    "contentInset": "automatic",
+    "scrollEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    },
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
